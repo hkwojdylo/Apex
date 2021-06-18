@@ -1,0 +1,100 @@
+@RestResource(urlMapping='/Experian/*')
+global with sharing class ExperianREST {
+
+    public static final String SALESFORCE_LEAD_ID = 'CustomerSuppliedData';
+    public static List<Integration_Data_Mapping__mdt> integrationList;
+    public static final String DATATYPE_DATE = 'Date';
+    public static final String EXPERIAN = 'Experian';
+    public static final String METHOD = 'notifyInquiry';
+    public static String OBJ;
+
+    @HttpPatch
+    global static void notifyInquiry(){
+        RestRequest req = RestContext.request;
+        RestResponse res = RestContext.response;
+
+        try {
+            Map<String, Object> json = (Map<String, Object>)JSON.deserializeUntyped(req.requestBody.toString());
+            sObject o = parseJSON(json);
+            String value = '';
+            DateTime now = System.now();
+            String currentTime = String.valueOf(now).substring(11);
+
+            for(Integration_Data_Mapping__mdt i: integrationList){
+                if(i.Key__c.contains('.')){
+                    List<String> keys = i.Key__c.split('\\.');
+                    System.debug(keys);
+                    Map<String, Object> innerMap = (Map<String, Object>)json.get(keys[0]);
+                    value = String.valueOf(innerMap.get(keys[1]));
+                }else{
+                    value = String.valueOf(json.get(i.Key__c));
+                }
+
+                if(i.Field__c != null && value != null){
+
+                    if(i.Field__r.DataType == DATATYPE_DATE){
+                        System.debug('in date field'); 
+                        String dateToConvert = value.substring(4) + '-' + value.substring(0, 2) + '-' + value.substring(2, 4) + ' ' + currentTime;
+                        Date d = Date.valueOf(dateToConvert);
+                        o.put(i.Field__r.QualifiedAPIName, d);
+
+                    }else{
+                        o.put(i.Field__r.QualifiedAPIName, value);
+                    }
+
+                }else if(i.Field_Override__c != null && value != null){
+                    o.put(i.Field_Override__c, value);
+                }
+            }
+
+            Database.SaveResult result = Database.update(o, false) ;
+            if(!result.isSuccess()){
+                res.statusCode = 500;
+                List<Database.Error> err = result.getErrors();
+                FMZ_ExceptionLogger.log(new FMZ_ExperianRestException('Update from Experian was unsuccessful ' + err[0].getMessage()), OBJ, EXPERIAN, METHOD);
+            }else{
+                res.statusCode = 200;
+            }
+
+            res.responseBody = Blob.valueOf(parseResults(result));
+        
+            System.debug(result);
+            
+        } catch (Exception e) {
+            FMZ_ExceptionLogger.log(e, 'Lead', EXPERIAN, METHOD);
+            res.responseBody = Blob.valueOf(e.getMessage());
+            res.statusCode = 500;
+        }  
+
+    }
+
+    public static sObject parseJSON(Map<String, Object> json){
+        String leadId = String.valueOf(json.get(SALESFORCE_LEAD_ID));
+        System.debug('leadId in parseJson: ' + leadId);
+
+        Lead l = [SELECT Id, IsConverted, ConvertedAccountId FROM Lead WHERE Id =: leadId];
+        System.debug('Here is the lead: ' + l);
+
+        if(l.isConverted){
+            OBJ = 'Account';
+            integrationList = [SELECT Id, Active__c, Field__c, Field__r.DataType, Field__r.QualifiedAPIName, Field_Override__c, Function__c, Integration__c, Key__c, Object__c FROM Integration_Data_Mapping__mdt WHERE Active__c = TRUE AND Integration__c = 'Experian' AND Function__c = 'Update Account' AND Object__c = 'Account'];
+            return [SELECT Id FROM Account WHERE Id =: l.ConvertedAccountId];
+        }else{
+            OBJ = 'Lead';
+            integrationList = [SELECT Id, Active__c, Field__c, Field__r.DataType, Field__r.QualifiedAPIName, Field_Override__c, Function__c, Integration__c, Key__c, Object__c FROM Integration_Data_Mapping__mdt WHERE Active__c = TRUE AND Integration__c = 'Experian' AND Function__c = 'Update Lead' AND Object__c = 'Lead'];
+            return l;
+        }
+    }
+
+    public static String parseResults(Database.SaveResult result){
+        if(result.isSuccess()){
+            return '{ "transaction" : { "id" : "' + result.getId() + '" }, "statusCode": "200", "statusMessage": "Success" }'; 
+        }else{
+            Database.Error[] errs = result.getErrors();
+            return '{ "transaction" : { "id" : "' + result.getId() + '" }, "statusCode": "' + errs[0].getStatusCode() +'", "statusMessage": "'+ errs[0].getMessage() + '" }';
+        }
+    }
+
+    public class FMZ_ExperianRestException extends Exception {}
+    
+}
