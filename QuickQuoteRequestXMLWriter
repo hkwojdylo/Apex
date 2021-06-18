@@ -1,0 +1,126 @@
+public with sharing class QuickQuoteRequestXMLWriter extends XMLWriter{
+
+    public override String getXml(Map<String, Object> dataMap, List<Integration_Data_Mapping__mdt> mapping){
+        XmlStreamWriter w = new XmlStreamWriter();
+
+        w.writeStartDocument('utf-8', '1.0');
+        w.writeStartElement(null, 'RMF_CALCULATIONS_INPUT', null);
+        w.writeStartElement(null, 'LOAN_DATA', null);
+        Map<String, Object> calcInput = (Map<String, Object>) dataMap.get('calcInput');
+        for(Integration_Data_Mapping__mdt mp: mapping){
+            String key = mp.Key__c;
+            String fieldName = mp.Field__r.QualifiedAPIName;
+            String value = String.valueOf(calcInput.get(key));
+            // System.debug('key: '+key);
+            // System.debug('value: '+value);
+
+            // System.debug(mp.Field__r.DataType);
+
+            if(mp.Field__r.DataType == 'Date' || mp.Field__r.DataType == 'Date/Time' || mp.Field__r.DataType == 'Formula (Date)'){
+                value = formatDate(value);
+            }
+
+            if(mp.Field__r.QualifiedAPIName == 'Amortization_Rate_Adjustment__c'){
+                if(value == null || String.isBlank(value)){
+                    value = '0.0000';
+                }
+            }
+
+            if(value == null){
+                handleMissingRequired('Loan', fieldName);
+            }
+
+            w.writeAttribute(null, null, key, value);
+        }
+        w.writeEndElement(); //ends Loan_Data
+        
+        //Writes product list
+        w.writeStartElement(null, 'PRODUCT_COMPARISON', null);
+        List<Object> productList = (List<Object>) dataMap.get('productList');
+        for(Object prod: productList){
+            Map<String, Object> prodMap = (Map<String, Object>) prod;
+            w.writeStartElement(null, 'LOAN_PRODUCT', null);
+            // gen values
+            for(String key: prodMap.keySet()){
+                // System.debug('    product key: '+key);
+                // System.debug('    product value: '+prodMap.get(key));
+                w.writeAttribute(null, null, key, String.valueOf(prodMap.get(key)));
+            }
+            w.writeEndElement(); //end individual loan product
+        }
+        w.writeEndElement();//end product comparison
+
+        //Write <INCLUDE TILA="" TALC="Y" AmortizationSchedule="Y"/>
+        w.writeStartElement(null, 'INCLUDE', null);
+        w.writeAttribute(null, null, 'TILA', '');
+        w.writeAttribute(null, null, 'TALC', 'Y');
+        w.writeAttribute(null, null, 'AmortizationSchedule', 'Y');
+        w.writeEndElement(); //ends TILA
+
+        w.writeEndElement(); //ends Calculations Input
+        
+        String xmlOutput = w.getXmlString();
+        w.close();
+        // List<String> pieces = xmlOutput.split('<');
+        // for(String piece : pieces){
+        //     System.debug(piece);
+        // }
+        return xmlOutput;
+    }
+
+    public override String getXml(sObject sob, List<Integration_Data_Mapping__mdt> mapping){
+        XmlStreamWriter w = new XmlStreamWriter();
+
+        w.writeStartDocument('utf-8', '1.0');
+        w.writeStartElement(null, 'RMF_CALCULATIONS_INPUT', null);
+        w.writeStartElement(null, 'LOAN_DATA', null);
+        for(Integration_Data_Mapping__mdt mp: mapping){
+            String key = mp.Key__c;
+            String fieldName = mp.Field__r.QualifiedAPIName;
+            String value = String.valueOf(sob.get(fieldName));
+            System.debug(key);
+            System.debug(value);
+            if(value == null && key != 'AmortizationRateAdjustmentPercent'){
+                handleMissingRequired('Loan', fieldName);
+            }
+
+            System.debug(mp.Field__r.DataType);
+
+            if(mp.Field__r.DataType == 'Date' || mp.Field__r.DataType == 'Date/Time' || mp.Field__r.DataType == 'Formula (Date)'){
+                value = formatDate(value);
+            }
+
+            if(mp.Field__r.QualifiedAPIName == 'Amortization_Rate_Adjustment__c'){
+                if(value == null || String.isBlank(value)){
+                    value = '0.000';
+                }
+            }
+            System.debug(key);
+            System.debug(value);
+
+            w.writeAttribute(null, null, key, value);
+        }
+
+        w.writeAttribute(null, null, 'EstimatedClosingDate', formatDate(String.valueOf(Date.today().addDays(30))));
+        w.writeAttribute(null, null, 'AssumedPropertyAppreciationRate', '4.000');
+        w.writeAttribute(null, null, 'SalesUnit', 'Retail');
+        w.writeEndElement(); //ends Loan_Data
+        //need to loop through other loan products? what object to grab, metadats?
+
+        w.writeEndElement(); //ends Calculations Input
+        
+        String xmlOutput = w.getXmlString();
+        w.close();
+        return xmlOutput;
+    }
+
+    private static String formatDate(String d){
+        String formatted = d.replace('-', '');
+        if(formatted.length() > 8){
+            return formatted.substring(0, 8);
+        }else{
+            return formatted;
+        }
+    }
+    
+}
