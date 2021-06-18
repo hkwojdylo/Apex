@@ -1,0 +1,44 @@
+@isTest
+public with sharing class QuickQuoteRequestXMLWriter_Test {
+    
+    @IsTest
+    static void getXMLTest(){
+        Date d1 = Date.newInstance(1997, 9, 17);
+        Date d2 = Date.newInstance(1965, 6, 6);
+        Lead l = new Lead(LastName = 'Wojdylo', StateCode='NY', Loan_Purpose__c = 'Refinance', Date_Of_Birth__c = d1, County__c = 'Middlesex', City = 'Albany', Purchase_Price__c = 100.00, custentity_coborrower_dob__c = d2, Property_Value__c = 100.00, custentity_property_type__c = '1');
+        insert l;
+
+        Date d = Date.today().addDays(30);
+        String formatted = String.valueOf(d).replace('-', '');
+        String expected = '<?xml version="1.0" encoding="utf-8"?>'+ //metadata for this string is inactive now
+                        '<RMF_CALCULATIONS_INPUT>'+
+                        '<LOAN_DATA ' + 
+                        'AmortizationRateAdjustmentPercent="0.000" '+
+                        'AmortizationRateLabel="ExpectedRate" '+ 
+                        'AppraisedValueAmount="100.00" ' + 
+                        'CounselingFeeAmount="125" '+
+                        'FIPSCode="34023" '+
+                        'PropertyCity="Albany" '+
+                        'PropertyCounty="Middlesex" '+
+                        'PropertyState="NY" '+
+                        'PropertyType="Single Family" '+
+                        'PurchasePriceAmount="100.00" ' +
+                        'PurposeType="Refinance" '+
+                        'YoungestBorrowerDOB="19970917" '+ 
+                        'EstimatedClosingDate="'+ formatted + '" '+
+                        'AssumedPropertyAppreciationRate="4.000" '+
+                        'SalesUnit="Retail">'+
+                        '</LOAN_DATA>'+
+                        '</RMF_CALCULATIONS_INPUT>';
+
+        Test.startTest();
+        List<Integration_Data_Mapping__mdt> mapping = XMLWriter.getMapping('Quick Quote', 'Quick Quote Request');
+        sObject sob = XMLWriter.getsObject(l.Id, mapping);
+
+        QuickQuoteRequestXMLWriter writer = new QuickQuoteRequestXMLWriter();
+        String result = writer.getXML(sob, mapping);
+        Test.stopTest();
+        System.debug(result);
+        System.assertEquals(expected, result);
+    }
+}
