@@ -1,0 +1,71 @@
+@isTest
+public with sharing class ExperianRESTTest {
+
+    @TestSetup
+    static void makeData(){
+
+        Lead l1 = new Lead();
+        l1.LastName = 'Lannister';
+        insert l1;
+
+        Lead myLead = new Lead(LastName = 'Fry', Company='Fry And Sons');
+        insert myLead;
+        
+        Database.LeadConvert lc = new Database.LeadConvert();
+        lc.setLeadId(myLead.id);
+        
+        LeadStatus convertStatus = [SELECT Id, MasterLabel FROM LeadStatus WHERE IsConverted=true LIMIT 1];
+        lc.setConvertedStatus(convertStatus.MasterLabel);
+        
+        Database.LeadConvertResult lcr = Database.convertLead(lc);
+        System.debug(lcr.isSuccess());
+        
+    }
+
+    @IsTest
+    static void testPatchLead(){
+        Lead l = [SELECT Id FROM Lead WHERE LastName = 'Lannister' LIMIT 1];
+
+        System.debug('inhttpPatchLead test');
+        RestRequest req = new RestRequest(); 
+        RestResponse res = new RestResponse();             
+        req.requestURI = '/services/apexrest/ExperianREST';
+        req.httpMethod = 'PATCH';
+        RestContext.request = req;
+        req.requestBody = Blob.valueOf('{ "CustomerSuppliedData" : "' + l.Id + '", "TransactionInfo" : {"EventDeliveryDate" : "02152020", "VersionNum" : "0002" }, "EventInfo" : { "EventType" : "I", "EventDisplayCode" : "BKCDI"} }');
+        RestContext.response = res;
+
+        Test.startTest();
+        ExperianREST.notifyInquiry();
+        Test.stopTest();
+
+        Lead l2 = [SELECT Id, Inquiry_Date__c, Inquiry_Event_Code__c, Inquiry_Event__c FROM Lead WHERE Id =: l.Id];
+        System.debug('Here is l2: ' + l2);
+        System.debug(res.responseBody.toString());
+    }
+
+    @IsTest
+    static void testPatchAccount(){
+
+        Lead l = [SELECT Id, ConvertedAccountId FROM Lead WHERE LastName = 'Fry' LIMIT 1];
+        System.debug('Here is l.id: '+ l.Id);
+
+        System.debug('in new httpPatchAccount test');
+        RestRequest req = new RestRequest(); 
+        RestResponse res = new RestResponse();             
+        req.requestURI = '/services/apexrest/ExperianREST';
+        req.httpMethod = 'PATCH';
+        RestContext.request = req;
+        req.requestBody = Blob.valueOf('{ "CustomerSuppliedData" : "' + l.Id + '", "TransactionInfo" : {"EventDeliveryDate" : "02152020", "VersionNum" : "0002" }, "EventInfo" : { "EventType" : "I", "EventDisplayCode" : "BKCDI"} }');
+        RestContext.response = res;
+
+        Test.startTest();
+        ExperianREST.notifyInquiry();
+        Test.stopTest();
+
+        Account a = [SELECT Id, Inquiry_Date__c, Inquiry_Event_Code__c, Inquiry_Event__c, Name FROM Account WHERE Id =: l.ConvertedAccountId];
+        System.debug(a);
+        System.debug(res.responseBody.toString());
+    }
+    
+}
