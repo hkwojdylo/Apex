@@ -1,0 +1,27 @@
+@IsTest
+global with sharing class FIPSMockCallout implements HttpCalloutMock{
+
+    global HttpResponse respond(HttpRequest req){
+        HttpResponse res = new HttpResponse();
+        String body = ' [' +
+                            '{'+
+                                '"ZipCode": "18964",' +
+                                '"City": "Souderton",' +
+                                '"State": "PA",' +
+                                '"CountyName": "Montgomery",' +
+                                '"CountyFips": "42091"' +
+                            '},' +
+                            '{' +
+                                '"ZipCode": "18964",' +
+                                '"City": "Souderton",' +
+                                '"State": "PA",' +
+                                '"CountyName": "Bucks",' +
+                                '"CountyFips": "42017"' +
+                            '}' +
+                        ']';
+        res.setBody(body);
+        res.setStatusCode(200);
+        return res;
+    }
+    
+}
