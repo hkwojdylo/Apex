@@ -1,0 +1,116 @@
+public inherited sharing class FIPSController {
+    
+    @AuraEnabled(cacheable=true)
+    public static List<Map<String, Object>> zipCallout(Integer zipCode, Boolean startsWithZero){
+        try {
+            Integration_Operation__mdt operation = [SELECT Method__c, //FIELDS(ALL)
+                                                    Endpoint__c,
+                                                    Endpoint__r.Endpoint__c,
+                                                    Endpoint__r.Content_Type__c,
+                                                    Endpoint__r.Timeout__c,
+                                                    Endpoint__r.Destination__c,
+                                                    Endpoint__r.Destination__r.Base_URL__c,
+                                                    Endpoint__r.Destination__r.Integrator_Key__c,
+                                                    Endpoint__r.Destination__r.Username__c,
+                                                    Endpoint__r.Destination__r.Password__c,
+                                                    Endpoint__r.Destination__r.Header_Key__c,
+                                                    Endpoint__r.Destination__r.Header_Value__c
+                                                FROM Integration_Operation__mdt
+                                                WHERE DeveloperName = 'Zip_Look_Up'];
+
+            HttpRequest req = new HttpRequest();
+            if(startsWithZero){
+                req.setEndpoint(operation.Endpoint__r.Destination__r.Base_URL__c + operation.Endpoint__r.Endpoint__c +'0'+ zipCode);
+            }else{
+                req.setEndpoint(operation.Endpoint__r.Destination__r.Base_URL__c + operation.Endpoint__r.Endpoint__c + zipCode);
+            }
+            req.setMethod(operation.Method__c);
+
+            if(String.isNotBlank(operation.Endpoint__r.Destination__r.Username__c) && String.isNotBlank(operation.Endpoint__r.Destination__r.Password__c)){
+                String username = operation.Endpoint__r.Destination__r.Username__c;
+                String password = operation.Endpoint__r.Destination__r.Password__c;
+                
+                Blob headerValue = Blob.valueOf(username + ':' + password);
+                String authorizationHeader = 'Basic ' +
+                EncodingUtil.base64Encode(headerValue);
+                req.setHeader('Authorization', authorizationHeader);
+            }
+            if(String.isNotBlank(operation.Endpoint__r.Destination__r.Integrator_Key__c)){ 
+               req.setClientCertificateName(operation.Endpoint__r.Destination__r.Integrator_Key__c);
+            }
+            if(String.isNotBlank(operation.Endpoint__r.Destination__r.Header_Key__c) && String.isNotBlank(operation.Endpoint__r.Destination__r.Header_Value__c)){
+                req.setHeader(operation.Endpoint__r.Destination__r.Header_Key__c, operation.Endpoint__r.Destination__r.Header_Value__c);
+                System.debug('header: '+operation.Endpoint__r.Destination__r.Header_Key__c+' , '+operation.Endpoint__r.Destination__r.Header_Value__c);
+            }
+
+            Http http = new Http();
+            System.debug('req: '+req);
+            HTTPResponse res = http.send(req);
+            System.debug(res.getBody());
+
+            if(res.getStatusCode() == 200){
+                List<Object> myList = (List<Object>)JSON.deserializeUntyped(res.getBody());
+                List<Map<String, Object>> mappedResponse = new List<Map<String, Object>>();
+                for(Object o: myList){
+                    mappedResponse.add((Map<String, Object>)o);
+                    System.debug(o);
+                }
+                System.debug(mappedResponse);
+                return mappedResponse;
+            }else{
+                FMZ_ExceptionLogger.log(new AuraHandledException(res.getBody()), 'Lead', 'FIPSController', 'zipCallout');
+                throw new AuraHandledException('ERROR');
+            }
+            
+        } catch (Exception e) {
+            throw new AuraHandledException(e.getMessage());
+        }
+    }
+
+    @AuraEnabled(cacheable=true)
+    public static List<Map<String, Object>> zipLookUp(String zipcode){
+        System.debug(zipcode);
+        Integer zip = 0;
+        Boolean startsWithZero = false;
+        try {
+            if(zipcode.length() >= 5){
+                zip = Integer.valueOf(zipcode);
+
+                if(zip < 10000){
+                    startsWithZero = true;
+                }
+            }else{
+                throw new zipException();
+            }
+            
+        } catch (zipException e) {
+            throw new AuraHandledException('Invalid Zip Code Format');
+        }
+
+        List<Map<String,Object>> response = zipCallout(zip, startsWithZero);
+        System.debug('here is the response: ' + response);
+        return response;
+    }
+
+    @AuraEnabled
+    public static List<Map<String, String>> countiesPicklist(List<Map<String, Object>> data){
+        try {
+            List<Map<String, String>> picklistValues = new List<Map<String, String>>();
+
+            for(Map<String, Object> m: data){
+                Map<String, String> county = new Map<String, String>();
+                county.put('label', String.valueOf(m.get('CountyName')));
+                county.put('value', String.valueOf(m.get('CountyFips')));
+
+                picklistValues.add(county);
+            }
+
+            return picklistValues;
+            
+        } catch (Exception e) {
+            throw new AuraHandledException(e.getMessage());
+        }
+    }
+
+    public class zipException extends Exception {}
+}
